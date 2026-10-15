@@ -2,21 +2,8 @@
 #define VOLK_IMPLEMENTATION
 #define TINYOBJLOADER_IMPLEMENTATION
 
+#include "helper.h"
 #include "include/vulkanRenderer.h"
-static inline void chk(VkResult result) {
-	if (result != VK_SUCCESS) {
-		std::cerr << "Vulkan call returned an error (" << result << ")\n";
-		exit(result);
-	}
-}
-
-static inline void chk(bool result) {
-	if (!result) {
-		std::cerr << "Call returned an error\n";
-		std::cout << SDL_GetError() << std::endl;
-		exit(result);
-	}
-}
 
 void VulkanApplication::run(int argc, char* argv[]) {
 	initWindow();
@@ -32,6 +19,12 @@ void VulkanApplication::initWindow() {
 }
 
 void VulkanApplication::createSwapchain() {
+	chk(SDL_Vulkan_CreateSurface(window, instance, nullptr, &surface));
+	chk(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(devices[deviceIndex], surface, &surfaceCaps));
+	swapchainExtent = surfaceCaps.currentExtent;
+	if (surfaceCaps.currentExtent.width == 0xFFFFFFFF) {
+		swapchainExtent = { .width = static_cast<uint32_t>(windowSize.x), .height = static_cast<uint32_t>(windowSize.y) };
+	}
 	VkSwapchainCreateInfoKHR swapchainCI{
 		.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
 		.surface = surface,
@@ -53,7 +46,9 @@ void VulkanApplication::createSwapchain() {
 	chk(vkGetSwapchainImagesKHR(device, swapchain, &imageCount, swapchainImages.data()));
 	swapchainImageViews.resize(imageCount);
 	for (auto i = 0; i < imageCount; i++) {
-		VkImageViewCreateInfo viewCI{ .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, .image = swapchainImages[i], .viewType = VK_IMAGE_VIEW_TYPE_2D, .format = VK_FORMAT_B8G8R8A8_SRGB, .subresourceRange{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .levelCount = 1, .layerCount = 1 } };
+		VkImageViewCreateInfo viewCI{
+			.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+			.image = swapchainImages[i], .viewType = VK_IMAGE_VIEW_TYPE_2D, .format = VK_FORMAT_B8G8R8A8_SRGB, .subresourceRange{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .levelCount = 1, .layerCount = 1 } };
 		chk(vkCreateImageView(device, &viewCI, nullptr, &swapchainImageViews[i]));
 	}
 
@@ -87,38 +82,111 @@ void VulkanApplication::createSwapchain() {
 	chk(vkCreateImageView(device, &depthViewCI, nullptr, &depthImageView));
 }
 
-void VulkanApplication::initVulkan(int argc, char* argv[]) {
-	volkInitialize();
+void VulkanApplication::createPipeline() {
 
-	VkApplicationInfo appInfo{
-		.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-		.pApplicationName = "How to Vulkan",
-		.apiVersion = VK_API_VERSION_1_3 };
+	std::string shaderCode = readUpShader("C:\\Users\\fox1942\\Documents\\Projects\\HowToVulkan\\source\\bin\\Debug\\triangle.slang");
 
-	uint32_t instanceExtensionsCount{ 0 };
-	char const* const* instanceExtensions{ SDL_Vulkan_GetInstanceExtensions(&instanceExtensionsCount) };
-	VkInstanceCreateInfo instanceCI{
-		.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-		.pApplicationInfo = &appInfo,
-		.enabledExtensionCount = instanceExtensionsCount,
-		.ppEnabledExtensionNames = instanceExtensions,
+	VkShaderModule vertShaderModule = compileSlangToShaderModule(device, shaderCode.c_str(), "vsMain");
+	VkShaderModule fragShaderModule = compileSlangToShaderModule(device, shaderCode.c_str(), "psMain");
+
+	VkPipelineLayoutCreateInfo layoutInfo{ .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+	chk(vkCreatePipelineLayout(device, &layoutInfo, nullptr, &pipelineLayout));
+
+	VkFormat colorFormat = VK_FORMAT_B8G8R8A8_SRGB;
+	VkPipelineRenderingCreateInfo pipelineRenderingInfo{
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+		.colorAttachmentCount = 1,
+		.pColorAttachmentFormats = &colorFormat
 	};
-	chk(vkCreateInstance(&instanceCI, nullptr, &instance));
-	volkLoadInstance(instance); // ADDED: Load instance functions
 
-	uint32_t deviceCount{ 0 };
-	chk(vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr));
-	devices.resize(deviceCount);
-	chk(vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data()));
+	VkPipelineShaderStageCreateInfo shaderStages[] =
+	{
+		{.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .stage = VK_SHADER_STAGE_VERTEX_BIT, .module = vertShaderModule, .pName = "main"},
+		{.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .stage = VK_SHADER_STAGE_FRAGMENT_BIT, .module = fragShaderModule, .pName = "main"}
+	};
 
-	if (argc > 1) {
-		deviceIndex = std::stoi(argv[1]);
-		assert(deviceIndex < deviceCount);
-	}
-	VkPhysicalDeviceProperties2 deviceProperties{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
-	vkGetPhysicalDeviceProperties2(devices[deviceIndex], &deviceProperties);
-	std::cout << "Selected device: " << deviceProperties.properties.deviceName << "\n";
+	VkPipelineVertexInputStateCreateInfo vertexInputInfo{ .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
 
+	VkPipelineInputAssemblyStateCreateInfo inputAssembly{
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+		.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+		.primitiveRestartEnable = VK_FALSE
+	};
+
+	VkPipelineViewportStateCreateInfo viewportState{
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+		.viewportCount = 1,
+		.scissorCount = 1
+	};
+
+	VkPipelineRasterizationStateCreateInfo rasterizer{
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+		.depthClampEnable = VK_FALSE,
+		.rasterizerDiscardEnable = VK_FALSE,
+		.polygonMode = VK_POLYGON_MODE_FILL,
+		.cullMode = VK_CULL_MODE_BACK_BIT,
+		.frontFace = VK_FRONT_FACE_CLOCKWISE,
+		.depthBiasEnable = VK_FALSE,
+		.lineWidth = 1.0f
+	};
+
+	VkPipelineMultisampleStateCreateInfo multisampling{
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+		.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+		.sampleShadingEnable = VK_FALSE
+	};
+
+	VkPipelineColorBlendAttachmentState colorBlendAttachment{
+		.blendEnable = VK_FALSE,
+		.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |  VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
+	};
+
+	VkPipelineColorBlendStateCreateInfo colorBlending{
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+		.logicOpEnable = VK_FALSE,
+		.attachmentCount = 1,
+		.pAttachments = &colorBlendAttachment
+	};
+
+	VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+
+	VkPipelineDynamicStateCreateInfo dynamicState{
+		.sType =VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+		.dynamicStateCount = 2,
+		.pDynamicStates = dynamicStates
+	};
+
+	VkGraphicsPipelineCreateInfo pipelineInfo{
+		.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+		.pNext = &pipelineRenderingInfo,
+		.stageCount = 2,
+		.pStages = shaderStages,
+		.pVertexInputState = &vertexInputInfo,
+		.pInputAssemblyState =&inputAssembly,
+		.pViewportState = &viewportState,
+		.pRasterizationState = &rasterizer,
+		.pMultisampleState = &multisampling,
+		.pColorBlendState = &colorBlending,
+		.pDynamicState = &dynamicState,
+		.layout = pipelineLayout
+	};
+
+	chk(vkCreateGraphicsPipelines(device, VK_NULL_HANDLE,1,&pipelineInfo, nullptr, &pipeline));
+}
+
+
+const std::vector<const char*> validationLayers = {
+	"VK_LAYER_KHRONOS_validation"
+};
+
+void VulkanApplication::createVulkanMemoryAllocator() {
+	VmaVulkanFunctions vkFunctions{ .vkGetInstanceProcAddr = vkGetInstanceProcAddr, .vkGetDeviceProcAddr = vkGetDeviceProcAddr, .vkCreateImage = vkCreateImage };
+	VmaAllocatorCreateInfo allocatorCI{ .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT, .physicalDevice = devices[deviceIndex], .device = device, .pVulkanFunctions = &vkFunctions, .instance = instance };
+	chk(vmaCreateAllocator(&allocatorCI, &allocator));
+}
+
+
+void VulkanApplication::createDevice() {
 	// Find a queue family for graphics
 	uint32_t queueFamilyCount{ 0 };
 	vkGetPhysicalDeviceQueueFamilyProperties(devices[deviceIndex], &queueFamilyCount, nullptr);
@@ -136,8 +204,26 @@ void VulkanApplication::initVulkan(int argc, char* argv[]) {
 	// Logical device
 	const float qfpriorities{ 1.0f };
 	VkDeviceQueueCreateInfo queueCI{ .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, .queueFamilyIndex = queueFamily, .queueCount = 1, .pQueuePriorities = &qfpriorities };
-	VkPhysicalDeviceVulkan12Features enabledVk12Features{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES, .descriptorIndexing = true, .shaderSampledImageArrayNonUniformIndexing = true, .descriptorBindingVariableDescriptorCount = true, .runtimeDescriptorArray = true, .bufferDeviceAddress = true };
-	VkPhysicalDeviceVulkan13Features enabledVk13Features{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES, .pNext = &enabledVk12Features, .synchronization2 = true, .dynamicRendering = true };
+
+	VkPhysicalDeviceVulkan11Features enabledVk11Features{
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+		.shaderDrawParameters = true
+	};
+
+	VkPhysicalDeviceVulkan12Features enabledVk12Features{
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+		.pNext = &enabledVk11Features,
+		.descriptorIndexing = true, .shaderSampledImageArrayNonUniformIndexing = true,
+		.descriptorBindingVariableDescriptorCount = true,
+		.runtimeDescriptorArray = true,
+		.bufferDeviceAddress = true };
+
+	VkPhysicalDeviceVulkan13Features enabledVk13Features{
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+		.pNext = &enabledVk12Features,
+		.synchronization2 = true,
+		.dynamicRendering = true };
+
 	VkPhysicalDeviceFeatures enabledVk10Features{ .samplerAnisotropy = VK_TRUE };
 	const std::vector<const char*> deviceExtensions{ VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 	VkDeviceCreateInfo deviceCI{
@@ -150,27 +236,59 @@ void VulkanApplication::initVulkan(int argc, char* argv[]) {
 		.pEnabledFeatures = &enabledVk10Features
 	};
 	chk(vkCreateDevice(devices[deviceIndex], &deviceCI, nullptr, &device));
-	volkLoadDevice(device); // ADDED: Load device functions
+	volkLoadDevice(device);
 
 	vkGetDeviceQueue(device, queueFamily, 0, &queue);
+}
 
-	// VMA
-	VmaVulkanFunctions vkFunctions{ .vkGetInstanceProcAddr = vkGetInstanceProcAddr, .vkGetDeviceProcAddr = vkGetDeviceProcAddr, .vkCreateImage = vkCreateImage };
-	VmaAllocatorCreateInfo allocatorCI{ .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT, .physicalDevice = devices[deviceIndex], .device = device, .pVulkanFunctions = &vkFunctions, .instance = instance };
-	chk(vmaCreateAllocator(&allocatorCI, &allocator));
+void VulkanApplication::initVulkanCore(int argc, char* argv[]) {
+	volkInitialize();
 
-	chk(SDL_Vulkan_CreateSurface(window, instance, nullptr, &surface));
+	VkApplicationInfo appInfo{
+		.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+		.pApplicationName = "How to Vulkan",
+		.apiVersion = VK_API_VERSION_1_3 };
 
-	chk(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(devices[deviceIndex], surface, &surfaceCaps));
-	swapchainExtent = surfaceCaps.currentExtent;
-	if (surfaceCaps.currentExtent.width == 0xFFFFFFFF) {
-		swapchainExtent = { .width = static_cast<uint32_t>(windowSize.x), .height = static_cast<uint32_t>(windowSize.y) };
+	uint32_t instanceExtensionsCount{ 0 };
+	char const* const* instanceExtensions{ SDL_Vulkan_GetInstanceExtensions(&instanceExtensionsCount) };
+	VkInstanceCreateInfo instanceCI{
+		.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+		.pApplicationInfo = &appInfo,
+		.enabledLayerCount = static_cast<uint32_t>(validationLayers.size()),
+		.ppEnabledLayerNames = validationLayers.data(),
+		.enabledExtensionCount = instanceExtensionsCount,
+		.ppEnabledExtensionNames = instanceExtensions,
+	};
+
+	chk(vkCreateInstance(&instanceCI, nullptr, &instance));
+	volkLoadInstance(instance); // ADDED: Load instance functions
+
+	uint32_t deviceCount{ 0 };
+	chk(vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr));
+	devices.resize(deviceCount);
+	chk(vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data()));
+
+	if (argc > 1) {
+		deviceIndex = std::stoi(argv[1]);
+		assert(deviceIndex < deviceCount);
 	}
+	VkPhysicalDeviceProperties2 deviceProperties{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
+	vkGetPhysicalDeviceProperties2(devices[deviceIndex], &deviceProperties);
+	std::cout << "Selected device: " << deviceProperties.properties.deviceName << "\n";
 
+	
+	createDevice();
+	createVulkanMemoryAllocator();
+}
+
+void VulkanApplication::initVulkan(int argc, char* argv[]) {
+	initVulkanCore(argc, argv);
 	createSwapchain();
+	createPipeline();
 }
 
 void VulkanApplication::createCommandsAndSync() {
+
 	VkCommandPoolCreateInfo commandPoolCI{ .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, .queueFamilyIndex = 0 };
 	chk(vkCreateCommandPool(device, &commandPoolCI, nullptr, &commandPool));
 
@@ -256,17 +374,22 @@ void VulkanApplication::drawFrame() {
 
 	vkCmdBeginRendering(cb, &renderingInfo);
 
-	/*vkCmdBindPipeline();
+	vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
-	VkViewport viewport{};
-	vkCmdSetViewport();
+	VkViewport viewport{
+		.x =0.0f, .y =0.0f,
+		.width = static_cast<float>(swapchainExtent.width),
+		.height = static_cast<float>(swapchainExtent.height),
+		.minDepth = 0.0f,
+		.maxDepth = 1.0f
+	};
+
+	vkCmdSetViewport(cb,0,1,&viewport);
 
 	VkRect2D scissor{ .offset = {0,0}, .extent = swapchainExtent };
 	vkCmdSetScissor(cb, 0, 1, &scissor);
 
-	VkDeviceSize offsets[] = { 0 };
-
-	vkCmdDraw(cb, 3, 1, 0, 0);*/
+	vkCmdDraw(cb, 3, 1, 0, 0);
 
 	vkCmdEndRendering(cb);
 

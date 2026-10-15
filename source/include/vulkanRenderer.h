@@ -19,7 +19,6 @@
 #include <ktxvulkan.h>
 #include <tiny_obj_loader.h>
 
-
 class VulkanApplication {
 public:
 
@@ -67,9 +66,17 @@ public:
 
     void createSwapchain();
 
+    void createVulkanMemoryAllocator();
+
+    void createDevice();
+
+    void initVulkanCore(int argc, char* argv[]);
+
     void initVulkan(int argc, char* argv[]);
 
     void createCommandsAndSync();
 
     void drawFrame();
+
+    void createPipeline();
 };
