@@ -19,20 +19,19 @@
 #include <ktxvulkan.h>
 #include <tiny_obj_loader.h>
 #include "swapChain.h"
+#include "vPipeline.h"
 
 class VulkanApplication {
 public:
     static constexpr uint32_t maxFramesInFlight{ 2 };
     appCore aCore = {};
 
+    vPipeline pipeline;
     SwapChain swapChain;
-    ShaderProcessor shaderProcessor;
 
     bool updateSwapchain{ false };
     
     VkCommandPool commandPool{ VK_NULL_HANDLE };
-    VkPipeline pipeline{ VK_NULL_HANDLE };
-    VkPipelineLayout pipelineLayout{ VK_NULL_HANDLE };
     VkImage depthImage;
   
     VmaAllocation depthImageAllocation;
@@ -53,6 +52,7 @@ public:
     };
 
     void run(int argc, char* argv[]);
+
     void initWindow();
 
     void createVulkanMemoryAllocator();
@@ -67,5 +67,5 @@ public:
 
     void drawFrame();
 
-    void createPipeline();
+   
 };

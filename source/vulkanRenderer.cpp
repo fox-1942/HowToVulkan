@@ -17,99 +17,6 @@ void VulkanApplication::initWindow() {
 	chk(SDL_GetWindowSize(aCore.window, &aCore.windowSize.x, &aCore.windowSize.y));
 }
 
-void VulkanApplication::createPipeline() {
-
-	std::string shaderCode = shaderProcessor.readUpShader("C:\\Users\\fox1942\\Documents\\Projects\\HowToVulkan\\source\\bin\\Debug\\triangle.slang");
-
-	VkShaderModule vertShaderModule = shaderProcessor.compileSlangToShaderModule(aCore.device, shaderCode.c_str(), "vsMain");
-	VkShaderModule fragShaderModule = shaderProcessor.compileSlangToShaderModule(aCore.device, shaderCode.c_str(), "psMain");
-
-	VkPipelineLayoutCreateInfo layoutInfo{ .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
-	chk(vkCreatePipelineLayout(aCore.device, &layoutInfo, nullptr, &pipelineLayout));
-
-	VkFormat colorFormat = VK_FORMAT_B8G8R8A8_SRGB;
-	VkPipelineRenderingCreateInfo pipelineRenderingInfo{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-		.colorAttachmentCount = 1,
-		.pColorAttachmentFormats = &colorFormat
-	};
-
-	VkPipelineShaderStageCreateInfo shaderStages[] =
-	{
-		{.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .stage = VK_SHADER_STAGE_VERTEX_BIT, .module = vertShaderModule, .pName = "main"},
-		{.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .stage = VK_SHADER_STAGE_FRAGMENT_BIT, .module = fragShaderModule, .pName = "main"}
-	};
-
-	VkPipelineVertexInputStateCreateInfo vertexInputInfo{ .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
-
-	VkPipelineInputAssemblyStateCreateInfo inputAssembly{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-		.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-		.primitiveRestartEnable = VK_FALSE
-	};
-
-	VkPipelineViewportStateCreateInfo viewportState{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-		.viewportCount = 1,
-		.scissorCount = 1
-	};
-
-	VkPipelineRasterizationStateCreateInfo rasterizer{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-		.depthClampEnable = VK_FALSE,
-		.rasterizerDiscardEnable = VK_FALSE,
-		.polygonMode = VK_POLYGON_MODE_FILL,
-		.cullMode = VK_CULL_MODE_BACK_BIT,
-		.frontFace = VK_FRONT_FACE_CLOCKWISE,
-		.depthBiasEnable = VK_FALSE,
-		.lineWidth = 1.0f
-	};
-
-	VkPipelineMultisampleStateCreateInfo multisampling{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-		.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
-		.sampleShadingEnable = VK_FALSE
-	};
-
-	VkPipelineColorBlendAttachmentState colorBlendAttachment{
-		.blendEnable = VK_FALSE,
-		.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |  VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
-	};
-
-	VkPipelineColorBlendStateCreateInfo colorBlending{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-		.logicOpEnable = VK_FALSE,
-		.attachmentCount = 1,
-		.pAttachments = &colorBlendAttachment
-	};
-
-	VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
-
-	VkPipelineDynamicStateCreateInfo dynamicState{
-		.sType =VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-		.dynamicStateCount = 2,
-		.pDynamicStates = dynamicStates
-	};
-
-	VkGraphicsPipelineCreateInfo pipelineInfo{
-		.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-		.pNext = &pipelineRenderingInfo,
-		.stageCount = 2,
-		.pStages = shaderStages,
-		.pVertexInputState = &vertexInputInfo,
-		.pInputAssemblyState =&inputAssembly,
-		.pViewportState = &viewportState,
-		.pRasterizationState = &rasterizer,
-		.pMultisampleState = &multisampling,
-		.pColorBlendState = &colorBlending,
-		.pDynamicState = &dynamicState,
-		.layout = pipelineLayout
-	};
-
-	chk(vkCreateGraphicsPipelines(aCore.device, VK_NULL_HANDLE,1,&pipelineInfo, nullptr, &pipeline));
-}
-
-
 const std::vector<const char*> validationLayers = {
 	"VK_LAYER_KHRONOS_validation"
 };
@@ -247,8 +154,7 @@ void VulkanApplication::initVulkan(int argc, char* argv[]) {
 	VkImageViewCreateInfo depthViewCI{ .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, .image = depthImage, .viewType = VK_IMAGE_VIEW_TYPE_2D, .format = depthFormat, .subresourceRange{.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT, .levelCount = 1, .layerCount = 1 } };
 	chk(vkCreateImageView(aCore.device, &depthViewCI, nullptr, &depthImageView));
 
-
-	createPipeline();
+	pipeline.createPipeline(aCore);
 }
 
 void VulkanApplication::createCommandsAndSync() {
@@ -338,7 +244,7 @@ void VulkanApplication::drawFrame() {
 
 	vkCmdBeginRendering(cb, &renderingInfo);
 
-	vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+	vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
 
 	VkViewport viewport{
 		.x =0.0f, .y =0.0f,
