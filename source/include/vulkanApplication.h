@@ -20,10 +20,10 @@
 #include <tiny_obj_loader.h>
 #include "swapChain.h"
 #include "vPipeline.h"
+#include "vRenderer.h"
 
 class VulkanApplication {
 public:
-    static constexpr uint32_t maxFramesInFlight{ 2 };
     appCore aCore = {};
 
     vPipeline pipeline;
@@ -31,16 +31,12 @@ public:
 
     bool updateSwapchain{ false };
     
-    VkCommandPool commandPool{ VK_NULL_HANDLE };
     VkImage depthImage;
+    VRenderer vRenderer;
   
     VmaAllocation depthImageAllocation;
     VkImageView depthImageView;
  
-    std::array<VkCommandBuffer, maxFramesInFlight> commandBuffers;
-    std::array<VkFence, maxFramesInFlight> fences;
-    std::array<VkSemaphore, maxFramesInFlight> imageAvailableSemaphores;
-    std::vector<VkSemaphore> renderCompleteSemaphores;
     VmaAllocation vBufferAllocation{ VK_NULL_HANDLE };
     VkBuffer vBuffer{ VK_NULL_HANDLE };
    
@@ -51,7 +47,7 @@ public:
         glm::vec2 uv;
     };
 
-    void run(int argc, char* argv[]);
+    void init(int argc, char* argv[]);
 
     void initWindow();
 
@@ -63,9 +59,9 @@ public:
 
     void initVulkan(int argc, char* argv[]);
 
-    void createCommandsAndSync();
+   // void createCommandsAndSync();
 
-    void drawFrame();
+   // void drawFrame();
 
    
 };
