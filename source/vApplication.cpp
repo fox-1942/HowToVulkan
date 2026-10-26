@@ -2,7 +2,7 @@
 #define VOLK_IMPLEMENTATION
 #define TINYOBJLOADER_IMPLEMENTATION
 
-#include "include/vulkanApplication.h"
+#include "include/vApplication.h"
 
 void VulkanApplication::init(int argc, char* argv[]) {
 	initWindow();
@@ -26,7 +26,6 @@ void VulkanApplication::createVulkanMemoryAllocator() {
 	VmaAllocatorCreateInfo allocatorCI{ .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT, .physicalDevice = aCore.devices[aCore.deviceIndex], .device = aCore.device, .pVulkanFunctions = &vkFunctions, .instance = aCore.instance };
 	chk(vmaCreateAllocator(&allocatorCI, &aCore.allocator));
 }
-
 
 void VulkanApplication::createDevice() {
 	// Find a queue family for graphics

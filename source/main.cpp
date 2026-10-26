@@ -1,4 +1,4 @@
-#include "include/vulkanApplication.h"
+#include "include/vApplication.h"
 
 int main(int argc, char* argv[]) {
 	VulkanApplication app;

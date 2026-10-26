@@ -58,10 +58,4 @@ public:
     void initVulkanCore(int argc, char* argv[]);
 
     void initVulkan(int argc, char* argv[]);
-
-   // void createCommandsAndSync();
-
-   // void drawFrame();
-
-   
 };
